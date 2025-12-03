@@ -1,0 +1,253 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+#include <WiFiClientSecure.h>
+// WiFi credentials
+const char* ssid = "VNU-IS 501";
+const char* password = "Vnu.edu.vn";
+
+// AWS IoT Settings
+const char* awsEndpoint = "akpsx0zlekl8x-ats.iot.ap-southeast-2.amazonaws.com"; 
+const int awsPort = 8883;
+
+// Certificates - PASTE YOUR EXISTING CERTIFICATES HERE
+const char* rootCA = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF
+ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6
+b24gUm9vdCBDQSAxMB4XDTE1MDUyNjAwMDAwMFoXDTM4MDExNzAwMDAwMFowOTEL
+MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv
+b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj
+ca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM
+9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw
+IFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6
+VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L
+93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm
+jgSubJrIqg0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC
+AYYwHQYDVR0OBBYEFIQYzIU07LwMlJQuCFmcx7IQTgoIMA0GCSqGSIb3DQEBCwUA
+A4IBAQCY8jdaQZChGsV2USggNiMOruYou6r4lK5IpDB/G/wkjUu0yKGX9rbxenDI
+U5PMCCjjmCXPI6T53iHTfIUJrU6adTrCC2qJeHZERxhlbI1Bjjt/msv0tadQ1wUs
+N+gDS63pYaACbvXy8MWy7Vu33PqUXHeeE6V/Uq2V8viTO96LXFvKWlJbYK8U90vv
+o/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1bldZwgJcJmApzyMZFo6IQ6XU
+5MsI+yMRQ+hDKXJioaldXgjUkK642M4UwtBV8ob2xJNDd2ZhwLnoQdeXeGADbkpy
+rqXRfboQnoZsG4q5WTP468SQvvG5
+-----END CERTIFICATE-----
+)EOF";
+
+const char* clientCertificate = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIIDWTCCAkGgAwIBAgIUdU+Zsd9EvAEY7XQQadpUjkZM9GcwDQYJKoZIhvcNAQEL
+BQAwTTFLMEkGA1UECwxCQW1hem9uIFdlYiBTZXJ2aWNlcyBPPUFtYXpvbi5jb20g
+SW5jLiBMPVNlYXR0bGUgU1Q9V2FzaGluZ3RvbiBDPVVTMB4XDTI1MTIwMzAwMDgy
+N1oXDTQ5MTIzMTIzNTk1OVowHjEcMBoGA1UEAwwTQVdTIElvVCBDZXJ0aWZpY2F0
+ZTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKrHmj3tM9Ye9DaSlv+s
+nzg78RVoe4zPgW7QtDsoBnoIYo20b5rGHGWcKeFktgITE+aaIk2a3T1QPRMsuJVt
+4/tvjOLTeB31MPXBZ/eo72se0Edjx9Pgtt+shqpC5Wlmno4BPTchufWf3oJyfQyy
+qiUjS8091dV3dIc2IwnlglYlBHLYRe1cemYQZU0U6ya/exiu+zrJ2lt8ae3B1k0Q
+AaqRIobkrk6H2XaUvE6ITiZZBh9mCkAQrLl/aeEJ+xRrgpInUfkPmdx32TDjbaiA
+HiUU0TfI9U2t3g6xe7FNxF2+cFwkPG+ExsrQzxSG7FmZx8unt8ZIXQRL8p/pH8Lt
+GycCAwEAAaNgMF4wHwYDVR0jBBgwFoAUwseBq/Z80OAv9P7qIceM96yR5EgwHQYD
+VR0OBBYEFIeBtp5CEES43i7iYyZ7aF1Nj8FgMAwGA1UdEwEB/wQCMAAwDgYDVR0P
+AQH/BAQDAgeAMA0GCSqGSIb3DQEBCwUAA4IBAQByEv1nFtQBW6gK8HppJrol15DV
+1RqgH5IJgp45pFtlCphmB/BJ6C9bPHvNi1LzSsdPEntlkTGTA9aF0P8lQ3XkceKZ
+vUIM97dcjeBYiATx11VmbanXU7X9qyl1cC+cf8dHdXCkR/WZ3AP3dFWt8aWxKOCz
+NlmFsfa+XIQAJp7iAxK7QFMT71McAfgNBwKSIQUyrQI+W3tD1EMBfyvSrUvFbwYf
++oq+1FWIAiFs+z5myS5MLbep+jxKTq7KgTOH/66FfHVvuKL2tKgB3+CDSOH8Xoim
+B12hQKXHU4y/95cVTSq8YLsRwnrZpDbpPYAyME1hNDV70C1tItGA7DAWd0iY
+-----END CERTIFICATE-----
+)EOF";
+
+const char* privateKey = R"EOF(
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEAqseaPe0z1h70NpKW/6yfODvxFWh7jM+BbtC0OygGeghijbRv
+msYcZZwp4WS2AhMT5poiTZrdPVA9Eyy4lW3j+2+M4tN4HfUw9cFn96jvax7QR2PH
+0+C236yGqkLlaWaejgE9NyG59Z/egnJ9DLKqJSNLzT3V1Xd0hzYjCeWCViUEcthF
+7Vx6ZhBlTRTrJr97GK77OsnaW3xp7cHWTRABqpEihuSuTofZdpS8TohOJlkGH2YK
+QBCsuX9p4Qn7FGuCkidR+Q+Z3HfZMONtqIAeJRTRN8j1Ta3eDrF7sU3EXb5wXCQ8
+b4TGytDPFIbsWZnHy6e3xkhdBEvyn+kfwu0bJwIDAQABAoIBAQCYyp/6y5/W8Da6
+JIioEr8Yxrg42RPAtV4t0NePHY493AaglVBMfvalCgSGPV6BmKPzau9J00YhNwqN
+fzNdrcWNDQ5VWbFbzCSTmwfzkdcyVY0ucd00eRXkJC0PY25w0HkGv6EPFEOVuASR
+XPD4TVjghSWqaKpJo+hDmHHcxtPHUTw/cV+q3XYzm8KaBPZsthrWm1oByLVVSJ4n
+KnK5thiwYFb8uD6fH2uKRudrOBbeuqncHBF/Lhjw7MPiDcVNpCgES9kNwdRIHydF
+hn/MFCd/SSnRekDPd3n3TZM/fzbl72rucbKCz506MjnpKWUl6XXtsd6PY4NIFP5F
+ptAeOCCxAoGBAN5yLAtRclOHsFko02tcYdCr5M9u2pfEga36xDZXl51BAVnM06Xm
+R0mz89m3iPaFKDqa3UEuIxoqFjNPcxU5P7wwzowLwhDvY5iy012Luo1AqE+D8lay
+YzFqUWCeOIOaHbuRSfnz9LYb4yEGfXa0N997PEgBXk9T7lZa9la1EPzTAoGBAMSK
+Ua467j4XaeV3zE/etZ4k/Avd8iVEbREEwgvD3kA3MLGkpmPhDWfkAmyk9BqJO05Q
+H9XrFJ0ETzJUfgFfqEU9HiPDo1PyzRZxualS64APJbXdj2hhmyBCyX3SUtAUZgx2
+sIQThNFpPVn3kD9YCg3dsqDquV5vzst48YmlRiPdAoGAI/xAV8xjPFQVGTdbjGCz
+ijhkmZILVsX5XJXWrBvbcRsVBtv12T65hZjQ+AWS6J599Y0cAfFeyFrKoJ5XtbU/
+NEiJAWrdiDPR3t//BYEXOsac89Aaoh/VoCbc505xQgjqim9kkkT+737vbWZJYayh
+5UtgYx2ljhu70MiCVWCRUPUCgYEAiKVWhtloHPlwYd85yOohwbMbHjEQkwKRBf0V
+4NIsat80Vr4QBW9KP8oSOXEyWmTBPACPMc7AxS5i1a5S8SeNuZ31n438t3gfSRSG
+rgf9vkpJwLkrZLo//V0R9A3QD+Wu0cmPjjR36pTN2Ag8XR4b12olMKYhfVwlHeiX
+nkivjG0CgYBpV66qBHHwAuh0Sxs2BqGm2af9/2Z4weSKXDZNPPB4mlCdex5lEcOn
+YpmkIvbp0z0rxkHUHv3RUcNApEo7TK2hZNBGc9I2u0FIs4nPcsvqfj3OfWui7sAS
+w3G9bwi+zEBM06ux9fzePK/piEj5E1IUDn5rRQ48krnXF5LF2arpJg==
+-----END RSA PRIVATE KEY-----
+)EOF";
+const char* statusTopic = "";
+
+// ===== GLOBAL OBJECTS =====
+BearSSL::WiFiClientSecure wifiClient;
+PubSubClient mqttClient(wifiClient);
+
+unsigned long lastReconnectAttempt = 0;
+const unsigned long RECONNECT_INTERVAL = 5000;
+
+void setClock() {
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+
+  Serial.print("Waiting for NTP time sync: ");
+  time_t now = time(nullptr);
+  while (now < 8 * 3600 * 2) {
+    delay(500);
+    Serial.print(".");
+    now = time(nullptr);
+  }
+  Serial.println();
+  
+  struct tm timeinfo;
+  gmtime_r(&now, &timeinfo);
+  Serial.print("Current time: ");
+  Serial.print(asctime(&timeinfo));
+}
+
+void setupWiFi() {
+  Serial.println();
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(ssid);
+  
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println();
+    Serial.println("WiFi connected!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+    
+    // Set time after WiFi connection
+    setClock();
+  } else {
+    Serial.println();
+    Serial.println("WiFi connection failed!");
+  }
+}
+
+void setupAWS() {
+  setClock();
+  
+  wifiClient.setBufferSizes(1024, 1024);
+  
+  BearSSL::X509List *rootCert = new BearSSL::X509List(rootCA);
+  BearSSL::X509List *clientCert = new BearSSL::X509List(clientCertificate);
+  BearSSL::PrivateKey *privKey = new BearSSL::PrivateKey(privateKey);
+
+  wifiClient.setTrustAnchors(rootCert);
+  wifiClient.setClientRSACert(clientCert, privKey);
+  
+  wifiClient.setInsecure();
+  mqttClient.setServer(awsEndpoint, awsPort);
+  mqttClient.setBufferSize(1024);
+  
+  Serial.println("AWS IoT configured");
+  Serial.println("Testing SSL connection...");
+  if (!wifiClient.connect(awsEndpoint, awsPort)) {
+    Serial.println("SSL connection failed!");
+    int sslError = wifiClient.getLastSSLError();
+    Serial.print("SSL Error code: ");
+    Serial.println(sslError);
+  } else {
+    Serial.println("SSL connection successful!");
+    wifiClient.stop();
+  }
+}
+
+boolean reconnectMQTT() {
+  String clientId = "ESP8266FireAlarm-" + String(random(0xffff), HEX);
+  
+  Serial.print("Attempting MQTT connection... ");
+  Serial.print("Client ID: ");
+  Serial.println(clientId);
+  
+  mqttClient.setSocketTimeout(30);
+  
+  if (mqttClient.connect(clientId.c_str())) {
+    Serial.println("Connected to AWS IoT!");
+    sendConnectionMessage();
+    return true;
+  } else {
+    int mqttState = mqttClient.state();
+    Serial.print("Failed, rc=");
+    Serial.print(mqttState);
+    
+    switch(mqttState) {
+      case -4: Serial.println(" - Connection timeout"); break;
+      case -3: Serial.println(" - Connection lost"); break;
+      case -2: Serial.println(" - Connect failed"); break;
+      case -1: Serial.println(" - Disconnected"); break;
+      case 1: Serial.println(" - Bad protocol"); break;
+      case 2: Serial.println(" - Bad client ID"); break;
+      case 3: Serial.println(" - Unavailable"); break;
+      case 4: Serial.println(" - Bad credentials"); break;
+      case 5: Serial.println(" - Unauthorized"); break;
+      default: Serial.println(" - Unknown error"); break;
+    }
+    return false;
+  }
+}
+
+void sendConnectionMessage() {
+  StaticJsonDocument<200> doc;
+  doc["clientId"] = "ESP8266_FireAlarm";
+  doc["status"] = "connected"; 
+  doc["type"] = "hardware";
+  doc["ip"] = WiFi.localIP().toString();
+  
+  char jsonBuffer[512];
+  serializeJson(doc, jsonBuffer);
+  
+  if (mqttClient.publish(statusTopic, jsonBuffer)) {
+    Serial.println("Connection message sent to AWS IoT");
+    Serial.println(jsonBuffer);
+  } else {
+    Serial.println("Failed to send connection message");
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  
+  Serial.println("=== ESP8266 AWS IoT Client ===");
+  Serial.println("Starting...");
+  
+  setupWiFi();
+  setupAWS();
+  
+  lastReconnectAttempt = millis();
+}
+
+void loop() {
+  if (!mqttClient.connected()) {
+    unsigned long now = millis();
+    if (now - lastReconnectAttempt > RECONNECT_INTERVAL) {
+      lastReconnectAttempt = now;
+      if (reconnectMQTT()) {
+        lastReconnectAttempt = 0;
+      }
+    }
+  } else {
+    mqttClient.loop();
+  }
+  
+  delay(100);
+}
